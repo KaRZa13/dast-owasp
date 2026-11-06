@@ -1,0 +1,16 @@
+# Surcharge Compose utilisée uniquement en CI (Docker-in-Docker).
+# Avec un service docker:dind, les montages "bind" (.:/app, ./init-db.js, ./reports)
+# sont résolus sur le système de fichiers du démon dind, qui ne contient pas le dépôt :
+# ils monteraient des dossiers vides. On les neutralise :
+#  - app : le code est déjà copié dans l'image (COPY . /app dans le Dockerfile) ;
+#  - db  : TIWAP réinitialise lui-même la collection "users" au démarrage (mongo_dbm.reset_db) ;
+#  - zap : /zap/wrk est créé dans le conteneur puis les rapports sont récupérés
+#          avec "docker compose cp".
+# Nécessite Docker Compose >= 2.24 (balise !reset).
+services:
+  app:
+    volumes: !reset []
+  db:
+    volumes: !reset []
+  zap:
+    volumes: !reset []

@@ -1,0 +1,29 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Application cible du scan DAST : dépôt git autonome, versionné séparément
+TIWAP/
+
+# Sorties ZAP temporaires (les rapports retenus sont dans livrables/rapports-zap/)
+zap-wrk/
+zap.yaml
+*.session
+*.session.*
+
+# Python (kpi_zap.py)
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# Docker
+docker-compose.override.yml
+compose.override.yaml
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
