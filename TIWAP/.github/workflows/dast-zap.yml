@@ -1,0 +1,68 @@
+# Variante GitHub Actions du job GitLab "dast_zap" (TP DAST NOVA SERVICES).
+# Sur les runners GitHub, Docker est natif : les montages du docker-compose.yml fonctionnent.
+name: DAST - OWASP ZAP baseline
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * 1"   # chaque lundi 03:00 UTC (détection de régressions)
+  push:
+    paths:
+      - "app.py"
+      - "helper/**"
+      - "vulnerabilities/**"
+      - "templates/**"
+      - "Static/**"
+      - "requirements.txt"
+      - "Dockerfile"
+      - "docker-compose*.yml"
+      - ".github/workflows/dast-zap.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  dast_zap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TARGET_URL: https://app:5000
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Démarrer TIWAP, MongoDB et ZAP
+        run: |
+          mkdir -p reports && chmod 777 reports
+          docker compose up -d --build app db zap
+
+      - name: Attendre que TIWAP réponde
+        run: |
+          for i in $(seq 1 60); do
+            code=$(docker compose exec -T zap curl -ks -o /dev/null -w '%{http_code}' "$TARGET_URL/" || true)
+            if [ "$code" = "200" ] || [ "$code" = "302" ]; then echo "TIWAP disponible"; exit 0; fi
+            echo "Attente ($i/60)..."; sleep 5
+          done
+          exit 1
+
+      - name: Scan de référence ZAP
+        run: |
+          set +e
+          docker compose exec -T zap zap-baseline.py -t "$TARGET_URL" -m 2 \
+            -r zap-report.html -J zap-report.json -w zap-report.md
+          rc=$?
+          echo "Code retour ZAP : $rc (0=OK, 1=FAIL, 2=WARN, 3=erreur)"
+          [ "$rc" -lt 3 ]
+
+      - name: Publier les rapports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-reports
+          path: reports/
+          retention-days: 30
+
+      - name: Arrêter les services
+        if: always()
+        run: |
+          docker compose logs --tail=100 app || true
+          docker compose down -v

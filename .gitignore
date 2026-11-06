@@ -3,9 +3,6 @@
 .env.*
 !.env.example
 
-# Application cible du scan DAST : dépôt git autonome, versionné séparément
-TIWAP/
-
 # Sorties ZAP temporaires (les rapports retenus sont dans livrables/rapports-zap/)
 zap-wrk/
 zap.yaml

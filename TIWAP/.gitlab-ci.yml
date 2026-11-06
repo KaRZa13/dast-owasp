@@ -1,0 +1,76 @@
+# TP DAST NOVA SERVICES — scan de référence OWASP ZAP sur TIWAP
+# Prérequis : runner GitLab (exécuteur docker) autorisé en mode privilégié pour Docker-in-Docker.
+
+stages:
+  - dast
+
+variables:
+  DOCKER_HOST: tcp://docker:2376
+  DOCKER_TLS_CERTDIR: "/certs"
+  DOCKER_TLS_VERIFY: "1"
+  DOCKER_CERT_PATH: "/certs/client"
+  COMPOSE_FILES: "-f docker-compose.yml -f docker-compose.ci.yml"
+  # TIWAP est servi en HTTPS (certificat auto-signé) sur le port 5000
+  TARGET_URL: "https://app:5000"
+  SPIDER_MINUTES: "2"
+
+dast_zap:
+  stage: dast
+  image: docker:27
+  services:
+    - name: docker:27-dind
+      alias: docker
+  rules:
+    # Changements de code pertinents ou lancement manuel / planifié
+    - if: '$CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web"'
+    - changes:
+        - app.py
+        - helper/**/*
+        - vulnerabilities/**/*
+        - templates/**/*
+        - Static/**/*
+        - requirements.txt
+        - Dockerfile
+        - docker-compose*.yml
+        - .gitlab-ci.yml
+  before_script:
+    - docker version
+    - docker compose version
+  script:
+    - mkdir -p reports
+    - docker compose $COMPOSE_FILES up -d --build app db zap
+    # Sans montage, /zap/wrk n'existe pas dans l'image : on le crée pour l'utilisateur zap
+    - docker compose $COMPOSE_FILES exec -T -u root zap sh -c 'mkdir -p /zap/wrk && chown zap:zap /zap/wrk'
+    # Attendre que TIWAP réponde (depuis le réseau Compose, comme ZAP)
+    - |
+      for i in $(seq 1 60); do
+        if docker compose $COMPOSE_FILES exec -T zap curl -ks -o /dev/null -w '%{http_code}' "$TARGET_URL/" | grep -qE '^(200|302)$'; then
+          echo "TIWAP est disponible"; break
+        fi
+        echo "Attente de TIWAP ($i/60)..."; sleep 5
+      done
+    - docker compose $COMPOSE_FILES exec -T zap curl -ksf -o /dev/null "$TARGET_URL/"
+    # Scan de référence (spider + analyse passive). Codes retour : 0 = OK, 1 = FAIL, 2 = WARN, 3 = erreur.
+    # On ne bloque pas le pipeline sur les alertes (WARN/FAIL) : elles sont qualifiées par l'équipe sécurité.
+    - |
+      set +e
+      docker compose $COMPOSE_FILES exec -T zap zap-baseline.py \
+        -t "$TARGET_URL" -m "$SPIDER_MINUTES" \
+        -r zap-report.html -J zap-report.json -w zap-report.md
+      ZAP_RC=$?
+      set -e
+      echo "Code retour ZAP : $ZAP_RC"
+      for f in zap-report.html zap-report.json zap-report.md; do
+        docker compose $COMPOSE_FILES cp "zap:/zap/wrk/$f" "reports/$f" || true
+      done
+      ls -lh reports/
+      if [ "$ZAP_RC" -ge 3 ]; then echo "Échec technique du scan"; exit 1; fi
+  after_script:
+    - docker compose -f docker-compose.yml -f docker-compose.ci.yml logs --tail=100 app || true
+    - docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v || true
+  artifacts:
+    when: always
+    name: "zap-$CI_COMMIT_SHORT_SHA"
+    expire_in: 30 days
+    paths:
+      - reports/

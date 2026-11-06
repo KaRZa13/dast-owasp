@@ -1,0 +1,29 @@
+# TP DAST NOVA SERVICES — configuration de laboratoire
+# - port web limité à la boucle locale (127.0.0.1)
+# - port MongoDB non publié sur l'hôte (accès uniquement via le réseau Compose, nom "db")
+# - service zap ajouté pour le scan de référence (Baseline Scan)
+# (l'attribut obsolète "version" a été retiré : il est ignoré par Compose v2)
+services:
+  app:
+    build: .
+    ports:
+      - "127.0.0.1:5000:5000"
+    volumes:
+      - .:/app
+    depends_on:
+      - db
+  db:
+    image: "mongo:4.4"
+    environment:
+      - MONGO_INITDB_DATABASE=TIWAP
+      - MONGO_INITDB_ROOT_USERNAME=username
+      - MONGO_INITDB_ROOT_PASSWORD=password
+    volumes:
+      - ./init-db.js:/docker-entrypoint-initdb.d/init-db.js:ro
+  zap:
+    image: ghcr.io/zaproxy/zaproxy:stable
+    depends_on:
+      - app
+    volumes:
+      - ./reports:/zap/wrk/:rw
+    entrypoint: ["sleep", "infinity"]
