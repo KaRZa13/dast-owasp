@@ -8,14 +8,14 @@ on:
     - cron: "0 3 * * 1"   # chaque lundi 03:00 UTC (détection de régressions)
   push:
     paths:
-      - "app.py"
-      - "helper/**"
-      - "vulnerabilities/**"
-      - "templates/**"
-      - "Static/**"
-      - "requirements.txt"
-      - "Dockerfile"
-      - "docker-compose*.yml"
+      - "TIWAP/app.py"
+      - "TIWAP/helper/**"
+      - "TIWAP/vulnerabilities/**"
+      - "TIWAP/templates/**"
+      - "TIWAP/Static/**"
+      - "TIWAP/requirements.txt"
+      - "TIWAP/Dockerfile"
+      - "TIWAP/docker-compose*.yml"
       - ".github/workflows/dast-zap.yml"
 
 permissions:
@@ -25,6 +25,9 @@ jobs:
   dast_zap:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: TIWAP
     env:
       TARGET_URL: https://app:5000
     steps:
@@ -58,7 +61,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: zap-reports
-          path: reports/
+          path: TIWAP/reports/
           retention-days: 30
 
       - name: Arrêter les services
